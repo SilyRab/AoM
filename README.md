@@ -12,7 +12,7 @@ sh 15_pretrain_full.sh
 sh 17_pretrain_full.sh
 ```
 
-## Links for checkpoints
+## Link for checkpoints
 [AoM_ckpt](https://drive.google.com/drive/folders/13YovBuSu6jo9ctp7rJQm95aXsEeOHspV?usp=share_link)
 
 ## Acknowledgements
