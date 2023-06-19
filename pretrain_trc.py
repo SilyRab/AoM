@@ -16,7 +16,7 @@ from src.data.collation import Collator
 from src.data.dataset import TRC_Dataset
 from src.data.tokenization_new import ConditionTokenizer
 from src.model.config import MultiModalBartConfig
-from src.model.model import TRCPretrain,MultiModalBartModelForPretrain
+from src.model.model import TRCPretrain
 from src.training import trc_pretrain
 from src.utils import Logger, save_training_data, load_training_data, setup_process, cleanup_process
 import torch.backends.cudnn as cudnn
@@ -78,28 +78,8 @@ def main(rank, args):
     if args.activation_dropout is not None:
         bart_config.activation_dropout = args.activation_dropout
 
-    if args.checkpoint:
-        pretrain_model = MultiModalBartModelForPretrain.from_pretrained(
-            args.checkpoint,
-            config=bart_config,
-            bart_model=args.bart_model,
-            tokenizer=tokenizer,
-            label_ids=label_ids,
-            senti_ids=senti_ids,
-            args=args,
-            error_on_mismatch=False)
-        model = TRCPretrain.from_pretrained(
-            args.checkpoint,
-            config=bart_config,
-            bart_model=args.bart_model,
-            tokenizer=tokenizer,
-            label_ids=label_ids,
-            senti_ids=senti_ids,
-            args=args,
-            error_on_mismatch=False)
-        model.encoder.load_state_dict(pretrain_model.encoder.state_dict())
-    else:
-        model = TRCPretrain(bart_config, args.bart_model,
+
+    model = TRCPretrain(bart_config, args.bart_model,
                                                tokenizer, label_ids, senti_ids,
                                                args)
 
@@ -112,12 +92,7 @@ def main(rank, args):
 
     logger.info('Loading data...')
     collate = Collator(tokenizer,
-                             mlm_enabled=False,
-                             senti_enabled=False,
-                             ae_enabled=False,
-                             oe_enabled=False,
                              aesc_enabled=False,
-                             anp_enabled=False,
                              trc_enabled=True,)
 
 
@@ -141,7 +116,7 @@ def main(rank, args):
 
     # resnet
     net = getattr(resnet, 'resnet152')()
-    net.load_state_dict(torch.load('/home/zhouru/ABSA2/src/resnet/resnet152.pth'))
+    net.load_state_dict(torch.load('/home/zhouru/ABSA4/src/resnet/resnet152.pth'))
     img_encoder = myResnet(net, True, device)
     img_encoder.to(device)
     args.checkpoint_path=checkpoint_path
@@ -364,6 +339,12 @@ def parse_args():
     parser.add_argument('--rank',
                         default=0,
                         type=int,
+                        help=' ')
+    parser.add_argument('--sentinet_on',
+                        action='store_true',
+                        help=' ')
+    parser.add_argument('--gcn_on',
+                        action='store_true',
                         help=' ')
     # parser.set_defau  lts()
     args = parser.parse_args()
