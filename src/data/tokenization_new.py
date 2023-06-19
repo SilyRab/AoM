@@ -130,6 +130,7 @@ class ConditionTokenizer:
         self.unk_token = self._base_tokenizer.unk_token
         self.unk_token_id = self._base_tokenizer.unk_token_id
         self.sentinet_on = args.sentinet_on
+        self.gcn_on = args.gcn_on
 
         if self.sentinet_on:
             path = '/home/zhouru/ABSA4/src/senticnet_word.txt'
@@ -254,19 +255,22 @@ class ConditionTokenizer:
                 noun_positions.append(noun_position)
 
             # 处理依赖矩阵
-            dependency_matrix = [torch.zeros([len(sentence_split[i]), len(sentence_split[i])]) for i in
+            if self.gcn_on:
+                dependency_matrix = [torch.zeros([len(sentence_split[i]), len(sentence_split[i])]) for i in
                                  range(len(sentence_split))]
-            for i, split in enumerate(sentence_split):
-                # assert len(sentence_split[i]) == len(pos_doc[i])
-                for t in pos_doc[i]:
-                    dependency_matrix[i][t.i][t.i] = 5
-                    for child in t.children:
-                        dependency_matrix[i][t.i][child.i] = 1
-                        dependency_matrix[i][child.i][t.i] = 1
+                for i, split in enumerate(sentence_split):
+                    # assert len(sentence_split[i]) == len(pos_doc[i])
+                    for t in pos_doc[i]:
+                        dependency_matrix[i][t.i][t.i] = 5
+                        for child in t.children:
+                            dependency_matrix[i][t.i][child.i] = 1
+                            dependency_matrix[i][child.i][t.i] = 1
 
-                        for cchild in child.children:
-                            dependency_matrix[i][t.i][cchild.i] = 1
-                            dependency_matrix[i][cchild.i][t.i] = 1
+                            for cchild in child.children:
+                                dependency_matrix[i][t.i][cchild.i] = 1
+                                dependency_matrix[i][cchild.i][t.i] = 1
+            else:
+                dependency_matrix=None
 
             input_sentence_tokens = []
             assert len(sentence_split) == len(pos_doc)
@@ -281,9 +285,10 @@ class ConditionTokenizer:
             for i, split in enumerate(sentence_split):
                 noun_mask = [0]
                 word_bpes = [self.bos_token_id]
-                # # 扩展依赖矩阵
-                dependency_matrix[i] = matrix_pad(dependency_matrix[i], -1)
-                dependency_matrix[i][0][0] = 1
+                if self.gcn_on:
+                    # # 扩展依赖矩阵
+                    dependency_matrix[i] = matrix_pad(dependency_matrix[i], -1)
+                    dependency_matrix[i][0][0] = 1
                 sentiment = [0]
                 for j, word in enumerate(split):
                     bpes = self._base_tokenizer.tokenize(word, add_prefix_space=True)
@@ -303,27 +308,28 @@ class ConditionTokenizer:
                                     sentiment.append(float(self.senticNet[s]))
                                 else:
                                     sentiment.append(0)
-                    # 扩展依赖矩阵
-                    if len(bpes) > 1:
-                        # 依赖矩阵扩展len(bpes)-1行
-                        for d_i in range(len(bpes) - 1):
-                            # 在pad_index后插入
-                            pad_index = token_index[i][j] + d_i
-                            dependency_matrix[i] = matrix_pad(dependency_matrix[i], pad_index)
-                            dependency_matrix[i][pad_index + 1][pad_index + 1] = 5
-                            # 找j行不为0的部分
-                            have_arc = torch.nonzero(
-                                dependency_matrix[i][token_index[i][j]] == 1).squeeze().numpy().tolist()
-                            if isinstance(have_arc, int):
-                                have_arc = [have_arc]
-                            for arc_x in have_arc:
-                                if arc_x != token_index[i][j]:
-                                    dependency_matrix[i][pad_index + 1][arc_x] = 1
-                                    dependency_matrix[i][arc_x][pad_index + 1] = 1
-                        # token_index该token后位置调整
-                        for d_j in range(j + 1, len(split)):
-                            token_index[i][d_j] += len(bpes)
-                            token_index[i][d_j] -= 1
+                    if self.gcn_on:
+                        # 扩展依赖矩阵
+                        if len(bpes) > 1:
+                            # 依赖矩阵扩展len(bpes)-1行
+                            for d_i in range(len(bpes) - 1):
+                                # 在pad_index后插入
+                                pad_index = token_index[i][j] + d_i
+                                dependency_matrix[i] = matrix_pad(dependency_matrix[i], pad_index)
+                                dependency_matrix[i][pad_index + 1][pad_index + 1] = 5
+                                # 找j行不为0的部分
+                                have_arc = torch.nonzero(
+                                    dependency_matrix[i][token_index[i][j]] == 1).squeeze().numpy().tolist()
+                                if isinstance(have_arc, int):
+                                    have_arc = [have_arc]
+                                for arc_x in have_arc:
+                                    if arc_x != token_index[i][j]:
+                                        dependency_matrix[i][pad_index + 1][arc_x] = 1
+                                        dependency_matrix[i][arc_x][pad_index + 1] = 1
+                            # token_index该token后位置调整
+                            for d_j in range(j + 1, len(split)):
+                                token_index[i][d_j] += len(bpes)
+                                token_index[i][d_j] -= 1
                     word_bpes.extend(bpes)
                 word_bpes.append(self.eos_token_id)
                 if self.sentinet_on:
@@ -332,8 +338,9 @@ class ConditionTokenizer:
                     # assert len(word_bpes) == len(sentiment)
 
                 # # 扩展依赖矩阵
-                dependency_matrix[i] = matrix_pad(dependency_matrix[i], dependency_matrix[i].shape[0] - 1)
-                dependency_matrix[i][-1][-1] = 1
+                if self.gcn_on:
+                    dependency_matrix[i] = matrix_pad(dependency_matrix[i], dependency_matrix[i].shape[0] - 1)
+                    dependency_matrix[i][-1][-1] = 1
                 # assert len(word_bpes)==dependency_matrix[i].shape[0]
                 noun_mask += [0]
                 # _word_bpes = list(chain(*word_bpes))
